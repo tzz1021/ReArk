@@ -1,0 +1,112 @@
+name: Linux Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    env:
+      HYLE_INSTALL_PREFIX: ${{ github.workspace }}/.deps/hyle/install
+      WUWE_INSTALL_PREFIX: ${{ github.workspace }}/.deps/wuwe/install
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            git \
+            python3 \
+            python3-pip \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qt6-multimedia-dev \
+            qt6-quickcontrols2-dev \
+            qt6-svg-dev \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            libxcb1-dev \
+            libxcb-xinerama0-dev \
+            libxcb-cursor-dev \
+            libx11-xcb-dev
+
+      - name: Build/Install hyle dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/.deps"
+          git clone --depth 1 https://github.com/ReArk-org/hyle.git "${GITHUB_WORKSPACE}/.deps/hyle-src"
+          cmake -S "${GITHUB_WORKSPACE}/.deps/hyle-src" \
+                -B "${GITHUB_WORKSPACE}/.deps/hyle-build" \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="${HYLE_INSTALL_PREFIX}"
+          cmake --build "${GITHUB_WORKSPACE}/.deps/hyle-build" --target install
+
+      - name: Build/Install wuwe dependency (optional)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code https://github.com/ReArk-org/wuwe.git >/dev/null 2>&1; then
+            git clone --depth 1 https://github.com/ReArk-org/wuwe.git "${GITHUB_WORKSPACE}/.deps/wuwe-src"
+            cmake -S "${GITHUB_WORKSPACE}/.deps/wuwe-src" \
+                  -B "${GITHUB_WORKSPACE}/.deps/wuwe-build" \
+                  -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DCMAKE_INSTALL_PREFIX="${WUWE_INSTALL_PREFIX}"
+            cmake --build "${GITHUB_WORKSPACE}/.deps/wuwe-build" --target install
+          else
+            echo "wuwe repo not found or not public; continuing without it"
+          fi
+
+      - name: Configure ReArk
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cmake -S . \
+                -B build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_PREFIX_PATH="${HYLE_INSTALL_PREFIX};${WUWE_INSTALL_PREFIX}" \
+                -DVCPKG_INSTALLED_PREFIX="" \
+                -DHYLE_INSTALL_PREFIX="${HYLE_INSTALL_PREFIX}" \
+                -DWUWE_INSTALL_PREFIX="${WUWE_INSTALL_PREFIX}"
+
+      - name: Build ReArk
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --parallel
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f build/CTestTestfile.cmake ]; then
+            ctest --test-dir build --output-on-failure --parallel
+          else
+            echo "No tests configured; skipping CTest"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reark-linux-build
+          path: |
+            build/ReArk
+            build/**/*.so
+            build/**/*.dll
