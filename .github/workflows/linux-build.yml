@@ -22,6 +22,10 @@ jobs:
 
       - name: Install system dependencies
         run: |
+          # Install base build tools and libraries. NOTE: we intentionally
+          # DO NOT install qt6-* distro packages here. Instead we install
+          # Qt via the dedicated GitHub Action below which provides a
+          # reproducible Qt6 layout including QuickControls2 required by the repo.
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
@@ -31,17 +35,24 @@ jobs:
             git \
             python3 \
             python3-pip \
-            qt6-base-dev \
-            qt6-declarative-dev \
-            qt6-multimedia-dev \
-            qt6-quickcontrols2-dev \
-            qt6-svg-dev \
             libgl1-mesa-dev \
             libxkbcommon-dev \
             libxcb1-dev \
             libxcb-xinerama0-dev \
             libxcb-cursor-dev \
             libx11-xcb-dev
+
+      - name: Setup Qt (install Qt6 via action)
+        uses: subosito/qt-action@v2
+        with:
+          # Choose the Qt6 minor version you need; keep this in sync with your repo's requirements.
+          qt-version: '6.5.2'
+
+      - name: Verify Qt install (debug)
+        run: |
+          echo "PATH: $PATH"
+          which qmake || true
+          qmake --version || qtpaths --version || true
 
       - name: Build/Install hyle dependency
         shell: bash
