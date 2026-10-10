@@ -10,6 +10,7 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+
     env:
       HYLE_INSTALL_PREFIX: ${{ github.workspace }}/.deps/hyle/install
       WUWE_INSTALL_PREFIX: ${{ github.workspace }}/.deps/wuwe/install
@@ -22,10 +23,6 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          # Install base build tools and libraries. NOTE: we intentionally
-          # DO NOT install qt6-* distro packages here. Instead we install
-          # Qt via the dedicated GitHub Action below which provides a
-          # reproducible Qt6 layout including QuickControls2 required by the repo.
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
@@ -42,60 +39,40 @@ jobs:
             libxcb-cursor-dev \
             libx11-xcb-dev
 
-      - name: Ensure apt sources & install Qt6 packages
+      - name: Install Qt6
         run: |
-          # Enable universe (qt6-quickcontrols2-dev can live in universe on ubuntu-latest)
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends software-properties-common
-          sudo add-apt-repository -y universe
-          sudo apt-get update
-          # Debug: show availability of Qt6 quickcontrols package
-          apt-cache policy qt6-quickcontrols2-dev || apt-cache search qt6-quickcontrols
-          # Install Qt6 development modules required by the project
           sudo apt-get install -y --no-install-recommends \
             qt6-base-dev \
             qt6-declarative-dev \
             qt6-multimedia-dev \
-            qt6-quickcontrols2-dev \
-            qt6-svg-dev
-      - name: Verify Qt install (debug)
-        run: |
-          echo "qt paths and versions:"
-          which qmake || true
-          qmake --version 2>/dev/null || true
-          # CMake usually finds Qt installed by apt. If not, check /usr/lib/x86_64-linux-gnu/cmake/Qt6
-          ls -la /usr/lib/x86_64-linux-gnu/cmake/Qt6 || true
+            libqt6svg6-dev \
+            qml6-module-qtquick-controls2
 
-      - name: Verify Qt install (debug)
-        run: |
-          echo "PATH: $PATH"
-          which qmake || true
-          qmake --version || qtpaths --version || true
-
-      - name: Build/Install hyle dependency
+      - name: Build hyle dependency
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/.deps"
           git clone --depth 1 https://github.com/ReArk-org/hyle.git "${GITHUB_WORKSPACE}/.deps/hyle-src"
           cmake -S "${GITHUB_WORKSPACE}/.deps/hyle-src" \
-                -B "${GITHUB_WORKSPACE}/.deps/hyle-build" \
-                -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_INSTALL_PREFIX="${HYLE_INSTALL_PREFIX}"
+            -B "${GITHUB_WORKSPACE}/.deps/hyle-build" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${HYLE_INSTALL_PREFIX}"
           cmake --build "${GITHUB_WORKSPACE}/.deps/hyle-build" --target install
 
-      - name: Build/Install wuwe dependency (optional)
+      - name: Build wuwe dependency (optional)
         shell: bash
         run: |
           set -euo pipefail
           if git ls-remote --exit-code https://github.com/ReArk-org/wuwe.git >/dev/null 2>&1; then
             git clone --depth 1 https://github.com/ReArk-org/wuwe.git "${GITHUB_WORKSPACE}/.deps/wuwe-src"
             cmake -S "${GITHUB_WORKSPACE}/.deps/wuwe-src" \
-                  -B "${GITHUB_WORKSPACE}/.deps/wuwe-build" \
-                  -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -DCMAKE_INSTALL_PREFIX="${WUWE_INSTALL_PREFIX}"
+              -B "${GITHUB_WORKSPACE}/.deps/wuwe-build" \
+              -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="${WUWE_INSTALL_PREFIX}"
             cmake --build "${GITHUB_WORKSPACE}/.deps/wuwe-build" --target install
           else
             echo "wuwe repo not found or not public; continuing without it"
@@ -107,13 +84,10 @@ jobs:
           set -euo pipefail
           mkdir -p build
           cmake -S . \
-                -B build \
-                -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_PREFIX_PATH="${HYLE_INSTALL_PREFIX};${WUWE_INSTALL_PREFIX}" \
-                -DVCPKG_INSTALLED_PREFIX="" \
-                -DHYLE_INSTALL_PREFIX="${HYLE_INSTALL_PREFIX}" \
-                -DWUWE_INSTALL_PREFIX="${WUWE_INSTALL_PREFIX}"
+            -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${HYLE_INSTALL_PREFIX};${WUWE_INSTALL_PREFIX}"
 
       - name: Build ReArk
         shell: bash
@@ -138,4 +112,3 @@ jobs:
           path: |
             build/ReArk
             build/**/*.so
-            build/**/*.dll
